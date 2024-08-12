@@ -70,28 +70,17 @@ func main() {
 	// Build a KD-tree from the sample points
 	// kdTree := node.NewNode(points, 0)
 	startNewNode := time.Now()
-	kdTree := node.NewNode(dataPoints, 0)
+	kdTree := node.NewKDTree(dataPoints, 1)
 	endNewNode := time.Now()
 	durationNewNode := endNewNode.Sub(startNewNode)
 	fmt.Printf("Building k-d tree took %.02f seconds.\n", durationNewNode.Seconds())
 	// Query a point to find its nearest neighbor
 	// queryPoint := Point{6, 5}
 	// queryPoint := node.Point{35.91, 127.77, "Korea"} // 52.52, 13.41, "Berlin"   35.91, 127.77, "Korea"
-	nearestNeighbor := kdTree.FindNearestNeighbor(queryPoint, nil)
+	nearestNeighbor := kdTree.FindNearestNeighbor(queryPoint)
 
 	fmt.Printf("Query Point: %v\n", queryPoint)
-	fmt.Printf("Nearest Neighbor: %v\n", nearestNeighbor.Point)
-
-	// Query a point to find k nearest neighbors
-	nearestKNeighbors, err := kdTree.FindKNearestNeighbors(queryPoint, 3)
-	if err != nil {
-		log.Fatalf("Encountered a problem...\nError: %v\n", err)
-	}
-	fmt.Println("")
-	fmt.Printf("Length of K Nearest Neighbors: %v\n", len(nearestKNeighbors))
-	for i, nn := range nearestKNeighbors {
-		fmt.Printf("Index: %d, K Nearest Neighbors: %v\n", i, nn.Point)
-	}
+	fmt.Printf("Nearest Neighbour: %v\n", nearestNeighbor)
 }
 
 // points from embedded csv
@@ -102,11 +91,11 @@ func ParseEmbeddedCSV() error {
 	// reader := csv.NewReader(strings.NewReader(csvData))
 	reader.Comma = ';'
 	// skip header
-	header, err := reader.Read()
+	_, err := reader.Read()
 	if err != nil {
 		return err
 	}
-	fmt.Println(header)
+	// fmt.Println(header)
 
 	for data, err := reader.Read(); err != io.EOF; data, err = reader.Read() {
 		singleRow := data[19]

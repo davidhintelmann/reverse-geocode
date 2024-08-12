@@ -59,16 +59,13 @@ func main() {
 	// 	{45.50, -73.56, "Montreal, CAN"},      // Montreal, Canada
 	// 	{52.23, 21.01, "Warsaw, POL"},         // Warsaw, Poland
 	// }
-
 	queryPoint := node.Point{44.03, -79.30, "Toronto", "Canada"}
 	startParseEmbeddedCSV := time.Now()
 	err := ParseEmbeddedCSV()
 	if err != nil {
 		log.Fatalf("Encountered a problem parsing the embedded csv.\nError: %v\n", err)
 	}
-	endParseEmbeddedCSV := time.Now()
-	durationParseEmbeddedCSV := endParseEmbeddedCSV.Sub(startParseEmbeddedCSV)
-	fmt.Printf("Parsing embedded csv line by line took %.02f seconds.\n", durationParseEmbeddedCSV.Seconds())
+	fmt.Printf("Parsing embedded csv line by line took %v seconds.\n", time.Since(startParseEmbeddedCSV))
 
 	// Build a KD-tree from the sample points
 	// kdTree := node.NewNode(points, 0)
@@ -85,7 +82,7 @@ func main() {
 	fmt.Printf("Query Point: %v\n", queryPoint)
 	fmt.Printf("Nearest Neighbor: %v\n", nearestNeighbor.Point)
 
-	// Query a point to find k neatest neighbors
+	// Query a point to find k nearest neighbors
 	nearestKNeighbors, err := kdTree.FindKNearestNeighbors(queryPoint, 3)
 	if err != nil {
 		log.Fatalf("Encountered a problem...\nError: %v\n", err)

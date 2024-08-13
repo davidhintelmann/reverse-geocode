@@ -1,7 +1,7 @@
 # Configuration variables for pathing to system variable,
 # module directory, and go file. 
-$WorkDir = "C:\Users\david\go\src\github.com\davidhintelmann\reverse-geocode\cmd"
-$EmbedDir = "C:\Users\david\go\src\github.com\davidhintelmann\reverse-geocode\node"
+$WorkDir = ("C:\Users\" + $Env:UserName + "\go\src\reverse-geocode\cmd")
+$EmbedDir = ("C:\Users\" + $Env:UserName + "\go\src\reverse-geocode\node")
 $SystemVariable = "go"
 $EmbedFile = "embed_csv.go"
 $File = "main.go"

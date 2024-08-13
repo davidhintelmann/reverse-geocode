@@ -1,6 +1,5 @@
 #ignore binary files
-geo.exe
-tmp.exe
+*.exe
 
 # ignore python jupyter file
 test.ipynb

@@ -5,101 +5,116 @@ import (
 	"sort"
 )
 
-type Point struct {
+type City struct {
 	Latitude, Longitude float64
-	City, Country       string
+	CityName, Country   string
 }
 
-type KDTree struct {
-	Point       Point
-	Left, Right *KDTree
+type KDTreeNode struct {
+	City        City
+	Left, Right *KDTreeNode
 	Depth       int
 }
 
-func NewKDTree(points []Point, depth int) *KDTree {
-	if len(points) == 0 {
+type KDTree struct {
+	Root *KDTreeNode
+}
+
+// Haversine distance between two cities (approximation of the great-circle distance)
+func haversine(lat1, lon1, lat2, lon2 float64) float64 {
+	const R = 6371 // Radius of Earth in kilometers
+	dLat := (lat2 - lat1) * (math.Pi / 180.0)
+	dLon := (lon2 - lon1) * (math.Pi / 180.0)
+
+	a := math.Sin(dLat/2)*math.Sin(dLat/2) +
+		math.Cos(lat1*(math.Pi/180.0))*math.Cos(lat2*(math.Pi/180.0))*
+			math.Sin(dLon/2)*math.Sin(dLon/2)
+	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
+	return R * c
+}
+
+func distance(city1, city2 City) float64 {
+	return haversine(city1.Latitude, city1.Longitude, city2.Latitude, city2.Longitude)
+}
+
+// Get the median city based on the specified dimension (latitude or longitude)
+func median(cities []City, dim int) City {
+	sort.Slice(cities, func(i, j int) bool {
+		if dim == 0 {
+			return cities[i].Latitude < cities[j].Latitude
+		}
+		return cities[i].Longitude < cities[j].Longitude
+	})
+	return cities[len(cities)/2]
+}
+
+// KD-Tree construction function
+func buildKDTree(cities []City, depth int) *KDTreeNode {
+	if len(cities) == 0 {
 		return nil
 	}
 
-	k := 2 // We're dealing with 2D points (latitude and longitude)
-	axis := depth % k
+	axis := depth % 2 // We only have 2 dimensions: Latitude and Longitude
 
-	// Sort points by the current axis (latitude or longitude)
-	sort.Slice(points, func(i, j int) bool {
-		if axis == 0 {
-			return points[i].Latitude < points[j].Latitude
-		}
-		return points[i].Longitude < points[j].Longitude
-	})
+	medianCity := median(cities, axis)
+	medianIndex := len(cities) / 2
 
-	// Select the median point
-	median := len(points) / 2
-
-	// Recursively build the KD-tree
-	return &KDTree{
-		Point: points[median],
-		Left:  NewKDTree(points[:median], depth+1),
-		Right: NewKDTree(points[median+1:], depth+1),
-		Depth: depth,
+	return &KDTreeNode{
+		City:  medianCity,
+		Depth: axis,
+		Left:  buildKDTree(cities[:medianIndex], depth+1),
+		Right: buildKDTree(cities[medianIndex+1:], depth+1),
 	}
 }
 
-func (t *KDTree) FindNearestNeighbor(target Point) Point {
-	return t.nearestNeighborHelper(target, t, math.Inf(1)).Point
+// NewKDTree initializes a new KD-Tree
+func NewKDTree(cities []City) *KDTree {
+	return &KDTree{
+		Root: buildKDTree(cities, 0),
+	}
 }
 
-func (t *KDTree) nearestNeighborHelper(target Point, best *KDTree, bestDist float64) *KDTree {
-	if t == nil {
+// Nearest neighbor search in the KD-Tree
+func (tree *KDTree) nearestNeighbor(root *KDTreeNode, target City, depth int, best *KDTreeNode, bestDist *float64) *KDTreeNode {
+	if root == nil {
 		return best
 	}
 
-	// Calculate current distance
-	distance := haversine(t.Point.Latitude, t.Point.Longitude, target.Latitude, target.Longitude)
-
-	if distance < bestDist {
-		best = t
-		bestDist = distance
+	d := distance(root.City, target)
+	if d < *bestDist {
+		*bestDist = d
+		best = root
 	}
 
-	axis := t.Depth % 2
+	axis := depth % 2
 
-	var nextBranch, otherBranch *KDTree
-	if (axis == 0 && target.Latitude < t.Point.Latitude) || (axis == 1 && target.Longitude < t.Point.Longitude) {
-		nextBranch = t.Left
-		otherBranch = t.Right
+	var nextBranch, otherBranch *KDTreeNode
+	if (axis == 0 && target.Latitude < root.City.Latitude) || (axis == 1 && target.Longitude < root.City.Longitude) {
+		nextBranch = root.Left
+		otherBranch = root.Right
 	} else {
-		nextBranch = t.Right
-		otherBranch = t.Left
+		nextBranch = root.Right
+		otherBranch = root.Left
 	}
 
-	best = nextBranch.nearestNeighborHelper(target, best, bestDist)
+	best = tree.nearestNeighbor(nextBranch, target, depth+1, best, bestDist)
 
-	// Check if we need to search the other branch
-	var diff float64
+	var planeDist float64
 	if axis == 0 {
-		diff = math.Abs(target.Latitude - t.Point.Latitude)
+		planeDist = target.Latitude - root.City.Latitude
 	} else {
-		diff = math.Abs(target.Longitude - t.Point.Longitude)
+		planeDist = target.Longitude - root.City.Longitude
 	}
 
-	if diff < bestDist {
-		best = otherBranch.nearestNeighborHelper(target, best, bestDist)
+	if math.Abs(planeDist) < *bestDist {
+		best = tree.nearestNeighbor(otherBranch, target, depth+1, best, bestDist)
 	}
 
 	return best
 }
 
-// Haversine formula to calculate the great-circle distance between two points on the Earth's surface
-func haversine(lat1, lon1, lat2, lon2 float64) float64 {
-	const R = 6371 // Earth radius in kilometers
-	dLat := (lat2 - lat1) * (math.Pi / 180.0)
-	dLon := (lon2 - lon1) * (math.Pi / 180.0)
-
-	lat1 = lat1 * (math.Pi / 180.0)
-	lat2 = lat2 * (math.Pi / 180.0)
-
-	a := math.Sin(dLat/2)*math.Sin(dLat/2) +
-		math.Sin(dLon/2)*math.Sin(dLon/2)*math.Cos(lat1)*math.Cos(lat2)
-	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
-	return R * c
+// FindNearestNeighbor is a method of KDTree to find the nearest neighbor of a target city
+func (tree *KDTree) FindNearestNeighbor(target City) *KDTreeNode {
+	bestDist := math.Inf(1)
+	return tree.nearestNeighbor(tree.Root, target, 0, nil, &bestDist)
 }

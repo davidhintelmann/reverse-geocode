@@ -59,7 +59,9 @@ func main() {
 	// 	{45.50, -73.56, "Montreal, CAN"},      // Montreal, Canada
 	// 	{52.23, 21.01, "Warsaw, POL"},         // Warsaw, Poland
 	// }
-	queryPoint := node.Point{44.03, -79.30, "Toronto", "Canada"}
+
+	// queryPoint := node.City{Latitude: 37.7749, Longitude: -122.4194, CityName: "San Francisco", Country: "USA"}
+	queryPoint := node.City{Latitude: 44.03, Longitude: -79.30, CityName: "Toronto", Country: "Canada"}
 	startParseEmbeddedCSV := time.Now()
 	err := ParseEmbeddedCSV()
 	if err != nil {
@@ -70,7 +72,7 @@ func main() {
 	// Build a KD-tree from the sample points
 	// kdTree := node.NewNode(points, 0)
 	startNewNode := time.Now()
-	kdTree := node.NewKDTree(dataPoints, 1)
+	kdTree := node.NewKDTree(dataPoints)
 	endNewNode := time.Now()
 	durationNewNode := endNewNode.Sub(startNewNode)
 	fmt.Printf("Building k-d tree took %.02f seconds.\n", durationNewNode.Seconds())
@@ -79,12 +81,12 @@ func main() {
 	// queryPoint := node.Point{35.91, 127.77, "Korea"} // 52.52, 13.41, "Berlin"   35.91, 127.77, "Korea"
 	nearestNeighbor := kdTree.FindNearestNeighbor(queryPoint)
 
-	fmt.Printf("Query Point: %v\n", queryPoint)
-	fmt.Printf("Nearest Neighbour: %v\n", nearestNeighbor)
+	fmt.Printf("Want Latitude: %v, Longitude: %v, CityName: %v, Country: %v\n", queryPoint.Latitude, queryPoint.Longitude, queryPoint.CityName, queryPoint.Country)
+	fmt.Printf("Got  Latitude: %v, Longitude: %v, CityName: %v, Country: %v\n", nearestNeighbor.City.Latitude, nearestNeighbor.City.Longitude, nearestNeighbor.City.CityName, nearestNeighbor.City.Country)
 }
 
 // points from embedded csv
-var dataPoints []node.Point
+var dataPoints []node.City
 
 func ParseEmbeddedCSV() error {
 	reader := csv.NewReader(strings.NewReader(csvdata))
@@ -110,7 +112,7 @@ func ParseEmbeddedCSV() error {
 		}
 
 		// node.Point{Latitude, Longitude, City Name, Country Name}
-		dataPoint := node.Point{singleLatFloat, singleLongFloat, data[1], data[6]}
+		dataPoint := node.City{singleLatFloat, singleLongFloat, data[1], data[6]}
 		dataPoints = append(dataPoints, dataPoint)
 	}
 	return nil

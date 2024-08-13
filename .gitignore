@@ -1,0 +1,5 @@
+#ignore binary files
+*.exe
+
+# ignore python jupyter file
+test.ipynb

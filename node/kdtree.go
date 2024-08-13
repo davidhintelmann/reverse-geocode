@@ -1,235 +1,165 @@
 package node
 
-import "math"
+import (
+	"encoding/csv"
+	"io"
+	"math"
+	"sort"
+	"strconv"
+	"strings"
+)
 
-type Point struct {
-	X, Y    float64
-	City    string
-	Country string
+// var CSVData string
+
+// points from embedded csv
+var DataPoints []City
+
+type City struct {
+	Latitude, Longitude float64
+	CityName, Country   string
 }
 
-// Geoname ID
-// Name
-// ASCII Name
-// Alternate Names
-// Feature Class
-// Feature Code
-// Country Code
-// Country name EN
-// Country Code 2
-// Admin1 Code
-// Admin2 Code
-// Admin3 Code
-// Admin4 Code
-// Population
-// Elevation
-// DIgital Elevation Model
-// Timezone
-// Modification date
-// LABEL EN
-// Coordinates
-
-type Node struct {
-	Point                 Point
-	Left, Right           *Node
-	SplitAxis, SplitValue int
+type KDTreeNode struct {
+	City        City
+	Left, Right *KDTreeNode
+	Depth       int
 }
 
-func NewNode(points []Point, depth int) *Node {
-	if len(points) == 0 {
+type KDTree struct {
+	Root *KDTreeNode
+}
+
+// Haversine distance between two cities (approximation of the great-circle distance)
+func Haversine(lat1, lon1, lat2, lon2 float64) float64 {
+	const R = 6371 // Radius of Earth in kilometers
+	dLat := (lat2 - lat1) * (math.Pi / 180.0)
+	dLon := (lon2 - lon1) * (math.Pi / 180.0)
+
+	a := math.Sin(dLat/2)*math.Sin(dLat/2) +
+		math.Cos(lat1*(math.Pi/180.0))*math.Cos(lat2*(math.Pi/180.0))*
+			math.Sin(dLon/2)*math.Sin(dLon/2)
+	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
+	return R * c
+}
+
+func MathEqualWithinAbsRel(a, b float64, absTol float64) bool {
+	return math.Abs(a-b) <= absTol
+}
+
+func Distance(city1, city2 City) float64 {
+	return Haversine(city1.Latitude, city1.Longitude, city2.Latitude, city2.Longitude)
+}
+
+// Get the median city based on the specified dimension (latitude or longitude)
+func Median(cities []City, dim int) City {
+	sort.Slice(cities, func(i, j int) bool {
+		if dim == 0 {
+			return cities[i].Latitude < cities[j].Latitude
+		}
+		return cities[i].Longitude < cities[j].Longitude
+	})
+	return cities[len(cities)/2]
+}
+
+// KD-Tree construction function
+func BuildKDTree(cities []City, depth int) *KDTreeNode {
+	if len(cities) == 0 {
 		return nil
 	}
 
-	axis := depth % 2 // Alternating between X and Y axes in 2D space
-	median := len(points) / 2
+	axis := depth % 2 // We only have 2 dimensions: Latitude and Longitude
 
-	// Sort points along the current axis
+	medianCity := Median(cities, axis)
+	medianIndex := len(cities) / 2
+
+	return &KDTreeNode{
+		City:  medianCity,
+		Depth: axis,
+		Left:  BuildKDTree(cities[:medianIndex], depth+1),
+		Right: BuildKDTree(cities[medianIndex+1:], depth+1),
+	}
+}
+
+// NewKDTree initializes a new KD-Tree
+func NewKDTree(cities []City) *KDTree {
+	return &KDTree{
+		Root: BuildKDTree(cities, 0),
+	}
+}
+
+// Nearest neighbor search in the KD-Tree
+func (tree *KDTree) NearestNeighbor(root *KDTreeNode, target City, depth int, best *KDTreeNode, bestDist *float64) *KDTreeNode {
+	if root == nil {
+		return best
+	}
+
+	d := Distance(root.City, target)
+	if d < *bestDist {
+		*bestDist = d
+		best = root
+	}
+
+	axis := depth % 2
+
+	var nextBranch, otherBranch *KDTreeNode
+	if (axis == 0 && target.Latitude < root.City.Latitude) || (axis == 1 && target.Longitude < root.City.Longitude) {
+		nextBranch = root.Left
+		otherBranch = root.Right
+	} else {
+		nextBranch = root.Right
+		otherBranch = root.Left
+	}
+
+	best = tree.NearestNeighbor(nextBranch, target, depth+1, best, bestDist)
+
+	var planeDist float64
 	if axis == 0 {
-		sortByX(points)
+		planeDist = target.Latitude - root.City.Latitude
 	} else {
-		sortByY(points)
+		planeDist = target.Longitude - root.City.Longitude
 	}
 
-	node := &Node{
-		Point:      points[median],
-		SplitAxis:  axis,
-		SplitValue: median,
-		Left:       NewNode(points[:median], depth+1),
-		Right:      NewNode(points[median+1:], depth+1),
+	if math.Abs(planeDist) < *bestDist {
+		best = tree.NearestNeighbor(otherBranch, target, depth+1, best, bestDist)
 	}
 
-	return node
+	return best
 }
 
-func sortByX(points []Point) {
-	// Implement a simple insertion sort for sorting points by X coordinate
-	for i := 1; i < len(points); i++ {
-		j := i
-		for j > 0 && points[j-1].X > points[j].X {
-			points[j], points[j-1] = points[j-1], points[j]
-			j--
+// FindNearestNeighbor is a method of KDTree to find the nearest neighbor of a target city
+func (tree *KDTree) FindNearestNeighbor(target City) *KDTreeNode {
+	bestDist := math.Inf(1)
+	return tree.NearestNeighbor(tree.Root, target, 0, nil, &bestDist)
+}
+
+// This function will parse the embedded csv file into the go binary.
+// If the csv file is lost this go program will still work
+func ParseEmbeddedCSV() error {
+	reader := csv.NewReader(strings.NewReader(CSVData))
+	// reader := csv.NewReader(strings.NewReader(csvData))
+	reader.Comma = ';'
+	// skip header
+	_, err := reader.Read()
+	if err != nil {
+		return err
+	}
+	// fmt.Println(header)
+
+	for data, err := reader.Read(); err != io.EOF; data, err = reader.Read() {
+		singleRow := data[19]
+		singleCoordinate := strings.Split(singleRow, ", ")
+		singleLatFloat, err := strconv.ParseFloat(singleCoordinate[0], 64)
+		if err != nil {
+			return err
 		}
-	}
-}
-
-func sortByY(points []Point) {
-	// Implement a simple insertion sort for sorting points by Y coordinate
-	for i := 1; i < len(points); i++ {
-		j := i
-		for j > 0 && points[j-1].Y > points[j].Y {
-			points[j], points[j-1] = points[j-1], points[j]
-			j--
+		singleLongFloat, err := strconv.ParseFloat(singleCoordinate[1], 64)
+		if err != nil {
+			return err
 		}
+
+		// node.Point{Latitude, Longitude, City Name, Country Name}
+		dataPoint := City{singleLatFloat, singleLongFloat, data[1], data[6]}
+		DataPoints = append(DataPoints, dataPoint)
 	}
-}
-
-func distanceSquared(p1, p2 Point) float64 {
-	dx := p1.X - p2.X
-	dy := p1.Y - p2.Y
-	return dx*dx + dy*dy
-}
-
-func (n *Node) FindNearestNeighbor(target Point, bestNeighbor *Node) *Node {
-	if n == nil {
-		return bestNeighbor
-	}
-
-	currentBest := bestNeighbor
-	// variable below is not being used
-	// currentAxis := n.SplitAxis
-
-	// Choose the next branch to search
-	var nearChild, farChild *Node
-	if target.X < n.Point.X || (target.X == n.Point.X && target.Y < n.Point.Y) {
-		nearChild, farChild = n.Left, n.Right
-	} else {
-		nearChild, farChild = n.Right, n.Left
-	}
-
-	// Recursively search the nearest subtree
-	currentBest = nearChild.FindNearestNeighbor(target, currentBest)
-
-	// Check if the current node is closer than the best found so far
-	if currentBest == nil || distanceSquared(target, n.Point) < distanceSquared(target, currentBest.Point) {
-		currentBest = n
-	}
-
-	// Check the other side of the splitting plane if necessary
-	if currentBest == nil || math.Pow(target.X-n.Point.X, 2)+math.Pow(target.Y-n.Point.Y, 2) <= distanceSquared(target, currentBest.Point) {
-		currentBest = farChild.FindNearestNeighbor(target, currentBest)
-	}
-
-	return currentBest
-}
-
-func (n *Node) FindKNearestNeighbors(target Point, k int) ([]*Node, error) {
-	if k < 1 {
-		return nil, &KGreaterThanZeroError{}
-	} else if k == 1 {
-		return nil, &KGreaterThanOneError{}
-	} else {
-		bestNeighbors := make([]*Node, 0, k)
-		n.findKNearestNeighbors(target, k, &bestNeighbors)
-		return bestNeighbors, nil
-	}
-}
-
-func (n *Node) findKNearestNeighbors(target Point, k int, bestNeighbors *[]*Node) {
-	if n == nil {
-		return
-	}
-
-	// variable below is not being used
-	// currentAxis := n.SplitAxis
-
-	// Choose the next branch to search
-	var nearChild, farChild *Node
-	if target.X < n.Point.X || (target.X == n.Point.X && target.Y < n.Point.Y) {
-		nearChild, farChild = n.Left, n.Right
-	} else {
-		nearChild, farChild = n.Right, n.Left
-	}
-
-	// Recursively search the nearest subtree
-	nearChild.findKNearestNeighbors(target, k, bestNeighbors)
-
-	// Check if the current node is closer than the farthest neighbor in the list
-	if len(*bestNeighbors) < k {
-		*bestNeighbors = append(*bestNeighbors, n)
-		// check if current node is nearest neighbor in bestNeighbors
-		// if it is update bestNeighbors
-		// else continue
-		for i := 0; i < len(*bestNeighbors); i++ {
-			if distanceSquared(target, n.Point) < distanceSquared(target, (*bestNeighbors)[i].Point) {
-				temp := (*bestNeighbors)[i] // previous node
-				(*bestNeighbors)[i] = n     // new node
-				(*bestNeighbors)[len(*bestNeighbors)-1] = temp
-			}
-		}
-	}
-
-	// Check the other side of the splitting plane if necessary
-	if len(*bestNeighbors) < k || math.Pow(target.X-n.Point.X, 2)+math.Pow(target.Y-n.Point.Y, 2) <= distanceSquared(target, (*bestNeighbors)[0].Point) {
-		farChild.findKNearestNeighbors(target, k, bestNeighbors)
-	}
-}
-
-type NodeList []*Node
-
-func (nl NodeList) Len() int {
-	return len(nl)
-}
-
-func (nl NodeList) Max(target Point) *Node {
-	if len(nl) == 0 {
-		return nil
-	}
-
-	maxNode := nl[0]
-	maxDistance := distanceSquared(nl[0].Point, target)
-
-	for _, node := range nl {
-		dist := distanceSquared(node.Point, target)
-		if dist > maxDistance {
-			maxNode = node
-			maxDistance = dist
-		}
-	}
-
-	return maxNode
-}
-
-func (nl *NodeList) Add(node *Node) {
-	*nl = append(*nl, node)
-}
-
-func (nl *NodeList) RemoveMax(target Point) {
-	maxIndex := 0
-	maxDistance := distanceSquared((*nl)[0].Point, target)
-
-	for i, node := range *nl {
-		dist := distanceSquared(node.Point, target)
-		if dist > maxDistance {
-			maxIndex = i
-			maxDistance = dist
-		}
-	}
-
-	*nl = append((*nl)[:maxIndex], (*nl)[maxIndex+1:]...)
-}
-
-// custom error code, enforce k > 0
-// for FindKNearestNeighbors function.
-type KGreaterThanZeroError struct{}
-
-func (m *KGreaterThanZeroError) Error() string {
-	return "k parameter must be greater than zero for FindKNearestNeighbors function."
-}
-
-// custom error code, enforce k > 1
-// for FindKNearestNeighbors function.
-type KGreaterThanOneError struct{}
-
-func (m *KGreaterThanOneError) Error() string {
-	return "k parameter must be greater than '1' (one) for FindKNearestNeighbors function.\nConsider using FindNearestNeighbor function for when k=1 instead."
+	return nil
 }

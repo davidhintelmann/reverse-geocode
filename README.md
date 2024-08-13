@@ -27,7 +27,7 @@ To use this project, you will need to:
 2. Call the NewKDTree function to construct a KD Tree from your list of cities.
 3. Pass the constructed KD Tree along with a target city to the FindNearestNeighbor function to find the nearest city.
 
-To simply run the program, as is, execute main.go. The program will parse the embedded CSV data and print the header row. It then reads each row of the CSV file and extracts the latitude and longitude coordinates from the 20th column (using zero-based indexing). These coordinates are stored in a struct (node.Point) along with the city name and country name.
+To simply run the program, as is, run the PowerShell script `build.ps1`. The program will parse the embedded CSV data and print the header row. It then reads each row of the CSV file and extracts the latitude and longitude coordinates from the 20th column (using zero-based indexing). These coordinates are stored in a struct (node.Point) along with the city name and country name.
 
 The NewKDTree function creates a new KD tree by recursively partitioning the input list of cities based on their median value. The FindNearestNeighbor function then uses this KD tree to search for the nearest city to a given target location.
 
